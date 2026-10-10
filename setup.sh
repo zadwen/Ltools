@@ -9,7 +9,7 @@ Usage: ./setup.sh [doctor|repair|install|power-enable|power-disable] [options]
   doctor          Read-only diagnostics (default)
   repair          Repair existing launcher mapping; back up changed files
                   Options: --launcher PATH --plugin-dir PATH --dry-run
-  install         Install prerequisites and open the upstream installer menu
+  install         Explain the upstream compatibility blocker
   power-enable    Enable supported power profiles on AC/battery (optional)
   power-disable   Remove Ltools v2 power automation
 Run as your normal desktop user, without sudo. Privileged steps request sudo.
@@ -26,27 +26,16 @@ if (($#)); then shift; fi
 case "$ACTION" in
     doctor|repair) exec python3 "$ROOT/ltools.py" "$ACTION" "$@" ;;
     install)
-        (($# == 0)) || { usage; exit 2; }
-        [[ -t 0 && -t 1 ]] || { echo 'Install requires an interactive terminal.' >&2; exit 1; }
-        command -v apt-get >/dev/null || { echo 'Automatic installation supports Zorin/Ubuntu/Debian only. Use doctor or repair on other distributions.' >&2; exit 1; }
-        echo 'Close Steam before continuing. The upstream menu controls which components are installed.'
-        echo 'Option 3 installs only ACCELA/SLSsteam; it does not install the LuaTools plugin.'
-        read -r -p 'Install dependencies and launch the third-party installer? [y/N] ' answer
-        [[ "$answer" =~ ^[Yy]$ ]] || exit 0
-        sudo apt-get update
-        sudo apt-get install -y curl ca-certificates git jq unzip python3-venv python3-pip
-        tmp=$(mktemp -d)
-        trap 'rm -rf -- "$tmp"' EXIT
-        # Pin this entry script. Its own downstream downloads are managed by upstream.
-        revision=b3fa04a28cef848187f4e816fcd8902be29e936e
-        curl --fail --location --show-error --silent --retry 3 --connect-timeout 15 --max-time 180 \
-            "https://raw.githubusercontent.com/Star123451/LuaToolsLinux/$revision/install.sh" -o "$tmp/install.sh"
-        printf '%s  %s\n' '25ac4c760d10bcd597e848fc075bcb5fd8ce26dd9758f63837327f05d4a1d551' "$tmp/install.sh" | sha256sum --check --status
-        bash -n "$tmp/install.sh"
-        bash "$tmp/install.sh"
-        echo 'Upstream installer exited. Checking the actual installed components...'
-        python3 "$ROOT/ltools.py" doctor
-        echo 'To repair the detected launcher mapping, run: ./setup.sh repair'
+        cat >&2 <<'NOTICE'
+Installation paused: this repository's LuaToolsLinux upstream uses a Python backend.
+Millennium 3.0 removed Python plugin support. Installing current Millennium with
+this old plugin does not produce a compatible setup.
+Run ./setup.sh doctor for local file checks. Confirm your Millennium version
+in its settings before selecting a compatible plugin/runtime combination.
+Ltools does not automatically downgrade Millennium or claim to port this plugin.
+See README: Millennium 3 compatibility.
+NOTICE
+        exit 1
         ;;
     power-enable|power-disable)
         (($# == 0)) || { usage; exit 2; }

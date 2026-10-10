@@ -47,6 +47,8 @@ def plugin_health(plugin):
             issues.append('plugin.json does not identify the luatools plugin')
     except (ValueError, OSError):
         issues.append('plugin.json is missing, unreadable or invalid')
+    if (plugin / 'backend/main.py').is_file():
+        issues.append('Legacy Python backend: incompatible with Millennium 3.x; confirm your runtime version in Millennium settings')
     if not (plugin / 'backend/main.py').is_file():
         issues.append('Python backend/main.py is missing (incomplete or nested installation)')
     if not (plugin / 'public/luatools.js').is_file():

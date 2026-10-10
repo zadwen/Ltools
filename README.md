@@ -3,8 +3,8 @@
 **by zadwen** • Zorin OS / Ubuntu / Debian • Bash + Python 3.9+
 
 Ltools helps diagnose and repair the connection between an existing LuaTools
-plugin and its installed launcher. It also offers an interactive upstream
-installer and optional AC/battery power profiles. Run it as your regular desktop
+plugin and its installed launcher. It also offers optional AC/battery power profiles. The legacy upstream
+installation is blocked pending a verified compatible runtime/plugin combination. Run it as your regular desktop
 user, **not with `sudo`**. Individual system changes request sudo themselves.
 
 ## Start here: fix an existing installation
@@ -45,8 +45,8 @@ unknown plugin schemas produce an actionable error instead of a bogus mapping.
 - Stopped overwriting ACCELA settings, credentials and post-processing preferences.
 - Added private timestamped backups and atomic replacement of launcher mappings.
 - Replaced unconditional success messages with failure propagation and diagnostics.
-- Download the upstream entry script to a file, verify its pinned SHA-256, then run
-  it with terminal input available. No `curl | bash` in the Ltools wrapper.
+- Blocked the old installation flow after verifying the Millennium 3 Python
+  runtime incompatibility. No third-party installer is executed.
 - Removed the instruction to blindly choose option 3: upstream option 3 installs
   ACCELA/SLSsteam only, not the LuaTools plugin.
 - Replaced direct CPU governor writes and the hardcoded `AC0` assumption with
@@ -63,9 +63,8 @@ installation evidence separately. It cannot confirm plugin activation from disk.
 1. In Steam, check **Steam > Millennium > Plugins** for LuaTools and enable it
    if present. If Millennium itself is missing, fix the loader first.
 2. The old setup's instruction to choose **option 3** installs ACCELA/SLSsteam
-   only. It skips the LuaTools plugin. Run `./setup.sh install` and choose the
-   upstream **Install/Reinstall LuaTools plugin** option (currently 2); this
-   upstream flow also checks Millennium. Review its prompts before continuing.
+   only. It skips the LuaTools plugin. However, reinstalling this legacy plugin is not a fix for Millennium 3.x;
+   see the compatibility section below before choosing an installer.
 3. Fully exit Steam, including the tray icon, and restart it. If the plugin still
    fails, fully close Steam again and launch `steam -dev` from a terminal.
    Inspect the LuaTools/Millennium errors; redact any credentials before sharing.
@@ -77,26 +76,28 @@ References: [Millennium file locations](https://docs.steambrew.app/users/getting
 [plugin settings](https://docs.steambrew.app/users/guides/installing-addons),
 [startup troubleshooting](https://docs.steambrew.app/users/getting-started/troubleshooting).
 
-## New installation / upstream repair menu
+## Millennium 3 compatibility — installation currently blocked
 
-```bash
-./setup.sh install
-```
+**The old LuaToolsLinux backend is Python-based. Millennium 3.0 removed Python
+plugin support.** If LuaTools disappeared when upgrading to Millennium 3.x,
+this incompatibility explains why reinstalling the same old plugin cannot fix it.
+Launcher mapping repair cannot restore a removed plugin runtime.
 
-This installs prerequisites using apt and opens the upstream menu. Review the
-component names and select what you need. Upstream may ask for additional sudo
-operations. Ltools does not automatically choose, remove Steam, or change sandbox
-permissions. Native Steam is the integration target; Flatpak and Snap installations
-are reported by diagnostics and need separate upstream compatibility review.
+`./setup.sh install` now stops with this explanation rather than installing an
+incompatible combination. Earlier revisions of this branch still delegated to
+the old installer; do not use those installation instructions on Millennium 3.x.
+Doctor detects files, not runtime compatibility or successful Steam activation,
+and flags this legacy backend even if every expected file exists.
 
-The entry script is pinned to LuaToolsLinux commit
-`b3fa04a28cef848187f4e816fcd8902be29e936e` with SHA-256
-`25ac4c760d10bcd597e848fc075bcb5fd8ce26dd9758f63837327f05d4a1d551`.
-**This only pins the entry script**: upstream still downloads dependencies and
-release assets independently. It is third-party software, and upstream failures
-or Steam/plugin compatibility changes may still require upstream fixes. Ltools
-checks the resulting installation and does not claim an upstream exit code proves
-that every component works.
+Check the installed Millennium version in its settings. A solution requires a
+plugin port compatible with that runtime, or a separately verified legacy setup.
+No legacy downgrade is automated here, and current Steam compatibility with old
+Millennium releases has not been established. This PR is **not a completed fix
+for the Millennium 3 migration**.
+
+Sources: [Millennium 3.0 release notes](https://github.com/SteamClientHomebrew/Millennium/releases/tag/v3.0.0)
+(the Python support removal), and the
+[LuaToolsLinux Python backend](https://github.com/Star123451/LuaToolsLinux/blob/b3fa04a28cef848187f4e816fcd8902be29e936e/backend/main.py).
 
 ## Optional power automation
 

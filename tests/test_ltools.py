@@ -55,7 +55,8 @@ class RepairTests(unittest.TestCase):
         (self.plugin / 'backend/main.py').write_text('# backend')
         (self.plugin / 'public').mkdir()
         (self.plugin / 'public/luatools.js').write_text('// frontend')
-        self.assertEqual(ltools.plugin_health(self.plugin), [])
+        self.assertEqual(len(ltools.plugin_health(self.plugin)), 1)
+        self.assertIn('incompatible with Millennium 3.x', ltools.plugin_health(self.plugin)[0])
 
     def test_correct_schema_and_idempotence(self):
         self.repair()
