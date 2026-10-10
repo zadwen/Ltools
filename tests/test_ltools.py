@@ -33,6 +33,30 @@ class RepairTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             ltools.repair(self.home, **kwargs)
 
+    def test_legacy_folder_name_detected(self):
+        renamed = self.plugin.with_name('LuaToolsLinux')
+        self.plugin.rename(renamed)
+        self.assertEqual(ltools.plugin_dirs(self.home), [renamed])
+
+    def test_manifest_detects_renamed_folder(self):
+        renamed = self.plugin.with_name('custom-folder')
+        self.plugin.rename(renamed)
+        (renamed / 'plugin.json').write_text('{"name": "luatools"}')
+        self.assertEqual(ltools.plugin_dirs(self.home), [renamed])
+
+    def test_partial_plugin_detected_and_reported(self):
+        (self.plugin / 'backend/downloads.py').unlink()
+        (self.plugin / 'backend').rmdir()
+        self.assertEqual(ltools.plugin_dirs(self.home), [self.plugin])
+        self.assertEqual(len(ltools.plugin_health(self.plugin)), 3)
+
+    def test_complete_plugin_health(self):
+        (self.plugin / 'plugin.json').write_text('{"name": "luatools"}')
+        (self.plugin / 'backend/main.py').write_text('# backend')
+        (self.plugin / 'public').mkdir()
+        (self.plugin / 'public/luatools.js').write_text('// frontend')
+        self.assertEqual(ltools.plugin_health(self.plugin), [])
+
     def test_correct_schema_and_idempotence(self):
         self.repair()
         self.assertEqual(self.target.read_text().strip(), str(self.launcher))

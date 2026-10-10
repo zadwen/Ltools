@@ -12,14 +12,46 @@ from datetime import datetime, timezone
 
 
 def plugin_dirs(home):
-    bases = [home / '.local/share/millennium/plugins', home / '.millennium/plugins',
-             home / '.steam/steam/millennium/plugins', home / '.local/share/Steam/millennium/plugins']
+    data = Path(os.environ.get('XDG_DATA_HOME') or home / '.local/share')
+    bases = [data / 'millennium/plugins', home / '.local/share/millennium/plugins',
+             home / '.millennium/plugins']
+    for steam in (home / '.steam/steam', home / '.steam/root', home / '.local/share/Steam'):
+        bases.extend([steam / 'millennium/plugins', steam / 'steamui/millennium/plugins',
+                      steam / 'plugins'])
     found = []
     for base in bases:
-        candidate = base / 'luatools'
-        if (candidate / 'backend').is_dir() and candidate.resolve() not in found:
-            found.append(candidate.resolve())
+        if not base.is_dir():
+            continue
+        for candidate in base.iterdir():
+            if not candidate.is_dir():
+                continue
+            manifest = candidate / 'plugin.json'
+            named = candidate.name.lower() in {'luatools', 'luatoolslinux', 'luatoolslinux-main'}
+            identified = False
+            if manifest.is_file():
+                try:
+                    metadata = json.loads(manifest.read_text())
+                    identified = isinstance(metadata, dict) and metadata.get('name', '').lower() == 'luatools'
+                except (ValueError, OSError, AttributeError):
+                    pass
+            if (named or identified) and candidate.resolve() not in found:
+                found.append(candidate.resolve())
     return found
+
+
+def plugin_health(plugin):
+    issues = []
+    try:
+        manifest = json.loads((plugin / 'plugin.json').read_text())
+        if not isinstance(manifest, dict) or manifest.get('name') != 'luatools':
+            issues.append('plugin.json does not identify the luatools plugin')
+    except (ValueError, OSError):
+        issues.append('plugin.json is missing, unreadable or invalid')
+    if not (plugin / 'backend/main.py').is_file():
+        issues.append('Python backend/main.py is missing (incomplete or nested installation)')
+    if not (plugin / 'public/luatools.js').is_file():
+        issues.append('public/luatools.js is missing (incomplete LuaTools frontend)')
+    return issues
 
 
 def launcher_candidates(home):
@@ -114,8 +146,19 @@ def doctor(home):
             print(f'[INFO] {label} Steam data found. Upstream integration targets native Steam; no sandbox changes are made.')
     plugins = plugin_dirs(home)
     report(len(plugins) == 1, f'{len(plugins)} LuaTools installation(s) detected')
+    loader = Path('/usr/lib/millennium').is_dir() or bool(shutil.which('millennium'))
+    report(loader, 'Millennium installation evidence found' if loader else
+           'Millennium loader not found in the usual location; installing ACCELA alone does not install it')
+    print('[INFO] File detection does not prove Steam loaded the plugin.')
+    print('[NEXT] In Steam, open Steam > Millennium > Plugins and check whether LuaTools is listed and enabled.')
+    print('[NEXT] If Millennium itself is absent from Steam, troubleshoot the loader before the launcher.')
+    print('[NEXT] For startup errors: fully exit Steam, run steam -dev, and inspect the LuaTools/Millennium errors locally.')
+    data = Path(os.environ.get('XDG_DATA_HOME') or home / '.local/share')
+    print(f'[INFO] Millennium log directory: {data / "millennium/logs"} (contents not printed)')
     for plugin in plugins:
         print(f'  {plugin}')
+        for issue in plugin_health(plugin):
+            report(False, issue)
         try:
             path = mapping_path(plugin)
             saved = path.read_text().strip() if path.exists() else ''

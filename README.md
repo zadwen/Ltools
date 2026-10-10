@@ -52,6 +52,31 @@ unknown plugin schemas produce an actionable error instead of a bogus mapping.
 - Replaced direct CPU governor writes and the hardcoded `AC0` assumption with
   optional supported power-profiles-daemon profiles.
 
+## LuaTools does not appear in Steam
+
+A working external launcher does not mean Steam has loaded LuaTools. Run doctor
+first: it recognizes legacy `LuaToolsLinux` folders, custom names identified by
+`plugin.json`, Steam-relative plugin locations and `XDG_DATA_HOME`. It reports
+partial installations, missing frontend/backend files, and Millennium loader
+installation evidence separately. It cannot confirm plugin activation from disk.
+
+1. In Steam, check **Steam > Millennium > Plugins** for LuaTools and enable it
+   if present. If Millennium itself is missing, fix the loader first.
+2. The old setup's instruction to choose **option 3** installs ACCELA/SLSsteam
+   only. It skips the LuaTools plugin. Run `./setup.sh install` and choose the
+   upstream **Install/Reinstall LuaTools plugin** option (currently 2); this
+   upstream flow also checks Millennium. Review its prompts before continuing.
+3. Fully exit Steam, including the tray icon, and restart it. If the plugin still
+   fails, fully close Steam again and launch `steam -dev` from a terminal.
+   Inspect the LuaTools/Millennium errors; redact any credentials before sharing.
+4. Logs are normally in `~/.local/share/millennium/logs`. Startup errors or
+   version incompatibility require those logs; launcher repair alone will not
+   fix them. Ltools does not automatically move or delete duplicate plugins.
+
+References: [Millennium file locations](https://docs.steambrew.app/users/getting-started/structure),
+[plugin settings](https://docs.steambrew.app/users/guides/installing-addons),
+[startup troubleshooting](https://docs.steambrew.app/users/getting-started/troubleshooting).
+
 ## New installation / upstream repair menu
 
 ```bash
