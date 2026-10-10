@@ -1,49 +1,155 @@
-# Zorin OS Ultimate Gaming & Hardware Setup Automation
+# Ltools 2 — Linux gaming setup & repair
 
-This repository contains an automated setup script (`setup.sh`) designed to configure a clean installation of Zorin OS for high-performance gaming, optimized Steam utility tools, and instant hardware-level power state switching.
+**by zadwen** • Zorin OS / Ubuntu / Debian • Bash + Python 3.9+
 
-## What This Script Solves
+Ltools helps diagnose and repair the connection between an existing LuaTools
+plugin and its installed launcher. It also offers an interactive upstream
+installer and optional AC/battery power profiles. Run it as your regular desktop
+user, **not with `sudo`**. Individual system changes request sudo themselves.
 
-When setting up custom gaming layouts, tools, and background hardware management on Linux, minor permission mismatches or manual paths can break configurations. This script completely automates the process and eliminates 5 critical friction points:
+## Start here: fix an existing installation
 
-1. **Permission & UI Lock Fixes:** Automatically corrects folder permissions (`chown`) from `root` back to the standard user account (`anas`), preventing user interface freezes and "Permission Denied" errors when running tools.
-2. **Optimized Network Pipelines:** Bypasses restrictive default download limits by injecting optimized network configurations, setting the system to run **4 parallel download streams** simultaneously to maximize internet bandwidth without crashing the connection.
-3. **Automated API Integration:** Injects your specific Hubcap API credentials directly into the application backend configuration files, completely removing the need to manually copy or type keys during installation.
-4. **Seamless Steam Launcher Mapping:** Automatically writes configuration files directly to your hidden Steam directories, perfectly linking your layout systems and external tools so everything bridges out-of-the-box.
-5. **Instant Hardware-Level Power Switching:** Completely bypasses unstable desktop layer power daemons. It deploys a low-level hardware script alongside custom kernel device rules (`udev`), forcing the CPU governor to instantly snap between maximum performance (on AC power) and balanced efficiency (on battery).
+Close Steam, then run:
 
----
-
-## Architecture Breakdown
-
-The script executes sequentially across these core areas:
-* **System Packages:** Pulls down critical system binaries (`curl`, `jq`, `git`, and power management libraries) via the Advanced Package Tool (`apt`).
-* **Tool Deployment:** Fetches and kicks off the interactive installer loop for the background game tools.
-* **Configuration Injection:** Generates precise JSON objects inside `~/.local/share/ACCELA/` and `~/.local/share/Steam/` to seed credentials and paths natively.
-* **Kernel Rule Enforcement:** Drops a custom automation binary into `/usr/local/bin/` and maps a persistent device manager profile under `/etc/udev/rules.d/` targeting the `AC0` power subsystem.
-
----
-
-## How to Use It
-
-### Step 1: Create the script locally
-If you haven't done so, copy the contents of the `setup.sh` script into a file on your system:
 ```bash
-nano setup.sh
-# Paste the code, save and exit (Ctrl+O, Enter, Ctrl+X)
-```
-tep 2: Make it executable
-Give the script permission to run as a system utility:
-
-```
-chmod +x setup.sh
+git clone https://github.com/zadwen/Ltools.git
+cd Ltools
+./setup.sh doctor
+./setup.sh repair --dry-run
+./setup.sh repair
 ```
 
-Step 3: Execute
-Run the script. Important: When the interactive installer prompt appears on your screen, manually select Option 3 to finalize the tool compilation:
+Restart Steam afterward. `doctor` is read-only and returns exit code 1 if checks
+need attention; this is a diagnostic result, not a crash. No arguments runs doctor.
+It never prints settings values or API keys.
 
-Bash
+If more than one launcher or plugin installation exists, select the intended one:
+
+```bash
+./setup.sh repair \
+  --plugin-dir "$HOME/.local/share/millennium/plugins/luatools" \
+  --launcher "$HOME/.local/share/ACCELA/ACCELA.AppImage"
 ```
-./setup.sh
+
+Use the actual executable path on your PC. Bifrost and ACCELA's `run.sh` are also
+detected. A valid saved custom launcher is preserved. Missing executables and
+unknown plugin schemas produce an actionable error instead of a bogus mapping.
+
+## What was fixed
+
+- Removed hardcoded `/home/anas` paths and recursive ownership changes.
+- Replaced the unused `Steam/config/luatools_config.json` mapping with the current
+  plugin's `backend/data/launcher_path.txt`, after checking the installed schema.
+- Removed the embedded API credential. **Revoke/regenerate the previously
+  published Hubcap key. Removing it here does not remove it from Git history.**
+- Stopped overwriting ACCELA settings, credentials and post-processing preferences.
+- Added private timestamped backups and atomic replacement of launcher mappings.
+- Replaced unconditional success messages with failure propagation and diagnostics.
+- Download the upstream entry script to a file, verify its pinned SHA-256, then run
+  it with terminal input available. No `curl | bash` in the Ltools wrapper.
+- Removed the instruction to blindly choose option 3: upstream option 3 installs
+  ACCELA/SLSsteam only, not the LuaTools plugin.
+- Replaced direct CPU governor writes and the hardcoded `AC0` assumption with
+  optional supported power-profiles-daemon profiles.
+
+## New installation / upstream repair menu
+
+```bash
+./setup.sh install
 ```
-by zadwen
+
+This installs prerequisites using apt and opens the upstream menu. Review the
+component names and select what you need. Upstream may ask for additional sudo
+operations. Ltools does not automatically choose, remove Steam, or change sandbox
+permissions. Native Steam is the integration target; Flatpak and Snap installations
+are reported by diagnostics and need separate upstream compatibility review.
+
+The entry script is pinned to LuaToolsLinux commit
+`b3fa04a28cef848187f4e816fcd8902be29e936e` with SHA-256
+`25ac4c760d10bcd597e848fc075bcb5fd8ce26dd9758f63837327f05d4a1d551`.
+**This only pins the entry script**: upstream still downloads dependencies and
+release assets independently. It is third-party software, and upstream failures
+or Steam/plugin compatibility changes may still require upstream fixes. Ltools
+checks the resulting installation and does not claim an upstream exit code proves
+that every component works.
+
+## Optional power automation
+
+Install `power-profiles-daemon` if it is absent and ensure it works in your desktop
+settings first. Do not combine this feature with TLP or auto-cpufreq.
+
+```bash
+./setup.sh power-enable
+```
+
+A systemd timer checks approximately every 30 seconds:
+
+| Power state | Requested profile |
+| --- | --- |
+| Recognized power adapter online | Performance, falling back to balanced if unsupported |
+| Recognized adapter offline and battery present | Power saver, falling back to balanced |
+| Desktop without battery / unknown adapter state | Balanced |
+
+This optional mode takes control of profile selection while enabled, so manual
+profile changes may be replaced at the next check. It never writes CPU governors
+or energy preferences directly. The timer persists across reboots.
+
+```bash
+systemctl status ltools-power.timer
+journalctl -u ltools-power.service -n 30 --no-pager
+./setup.sh power-disable
+```
+
+After disabling, select your preferred profile in desktop settings.
+
+### Migrate from the original power rule
+
+If doctor reports `/etc/udev/rules.d/99-power-profile.rules`, inspect it first:
+
+```bash
+cat /etc/udev/rules.d/99-power-profile.rules
+```
+
+**Only if it is the original Ltools rule calling
+`/usr/local/bin/switch_power_profile.sh`**, move it aside and reload the rules:
+
+```bash
+sudo mv -i /etc/udev/rules.d/99-power-profile.rules /etc/udev/rules.d/99-power-profile.rules.disabled
+sudo udevadm control --reload-rules
+```
+
+Reboot to clear the old script's direct CPU settings before enabling v2 automation.
+The old helper file becomes inactive once the rule is disabled; v2 does not reuse it.
+
+## Backups & permissions
+
+Repair creates `launcher_path.txt.bak-<UTC timestamp>` beside a changed mapping.
+Restore a chosen backup with `cp` while Steam is closed, then restart Steam.
+An unchanged mapping creates no additional backup. Dry runs write nothing.
+
+If older sudo runs left root-owned files, doctor flags configuration write access.
+Inspect the **specific reported directory** with `ls -ld` and correct ownership
+only for that application directory. Ltools intentionally does not recursively
+change ownership of your Steam library or home folder.
+
+Existing ACCELA settings and locally stored keys remain untouched; rotate exposed
+keys through the provider and update them through the application's settings UI.
+
+## Tests and limits
+
+```bash
+python3 -m unittest discover -s tests -v
+bash -n setup.sh scripts/power-install.sh
+```
+
+Tests cover path repair, backup privacy, idempotence, ambiguous launchers, unknown
+schemas, symlink handling, and supported power profile selection. The test suite
+uses temporary files and mocked profile commands; it does not install software or
+change system settings. Real Steam UI integration, GPU behavior, downloads and
+hardware power transitions still require testing on the destination PC. No FPS
+improvement is promised.
+
+## Upstream references
+
+- [LuaToolsLinux installer, pinned source](https://github.com/Star123451/LuaToolsLinux/blob/b3fa04a28cef848187f4e816fcd8902be29e936e/install.sh)
+- [LuaTools launcher path reader/writer, pinned source](https://github.com/Star123451/LuaToolsLinux/blob/b3fa04a28cef848187f4e816fcd8902be29e936e/backend/downloads.py)

@@ -1,98 +1,56 @@
-#!/bin/bash
-
-echo "=================================================="
-echo "   Ultimate Linux Gaming & Steam Tools Setup"
-echo "=================================================="
-
-# 1. Update and install core system dependencies
-echo "[*] Installing required system packages..."
-sudo apt update && sudo apt install -y curl jq python3-pip python3-venv git power-profiles-daemon
-
-# 2. Run the LuaToolsLinux automated installer
-echo "[*] Launching the main installer..."
-echo "[*] IMPORTANT: Choose option (3) when the menu appears!"
-echo "    Press Enter to start the installer..."
-read -r
-
-curl -fsSL https://raw.githubusercontent.com/Star123451/LuaToolsLinux/main/install.sh | bash
-
-# 3. Inject optimized configuration files to prevent UI and download locks
-echo "[*] Injecting ACCELA safe defaults..."
-mkdir -p /home/anas/.config/SLSsteam
-mkdir -p /home/anas/.local/share/ACCELA
-
-cat << 'EOF' > /home/anas/.local/share/ACCELA/settings.json
-{
-    "download_settings": {
-        "limit_downloads_to_steam_libraries": true,
-        "skip_single_choice_selection": true,
-        "maximum_concurrent_downloads": 4
-    },
-    "post_processing": {
-        "generate_steam_achievements": false,
-        "remove_steam_drm_with_steamless": true,
-        "apply_goldberg_automatically": true,
-        "create_application_shortcuts": false
-    },
-    "api_keys": {
-        "hubcap_api_key": "746db49af16dcb085cac8583c072053eb6727b6363845b2cd5f36",
-        "steamid64_api_key": ""
-    }
+#!/usr/bin/env bash
+set -Eeuo pipefail
+trap 'printf "[ERROR] Setup stopped at line %s. Fix the error above before retrying.\n" "$LINENO" >&2' ERR
+ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+usage() {
+    cat <<'HELP'
+Ltools 2 • by zadwen
+Usage: ./setup.sh [doctor|repair|install|power-enable|power-disable] [options]
+  doctor          Read-only diagnostics (default)
+  repair          Repair existing launcher mapping; back up changed files
+                  Options: --launcher PATH --plugin-dir PATH --dry-run
+  install         Install prerequisites and open the upstream installer menu
+  power-enable    Enable supported power profiles on AC/battery (optional)
+  power-disable   Remove Ltools v2 power automation
+Run as your normal desktop user, without sudo. Privileged steps request sudo.
+HELP
 }
-EOF
-
-# Fix permissions on injected files
-chown -R anas:anas /home/anas/.config/SLSsteam
-chown -R anas:anas /home/anas/.local/share/ACCELA
-
-# 4. Map the layout launcher path directly to Steam
-echo "[*] Mapping LuaTools layout configuration..."
-mkdir -p /home/anas/.local/share/Steam/config
-cat << 'EOF' > /home/anas/.local/share/Steam/config/luatools_config.json
-{
-    "external_launcher_path": "/home/anas/.local/share/ACCELA/ACCELA.AppImage"
-}
-EOF
-chown -R anas:anas /home/anas/.local/share/Steam/config
-
-# 5. Setup the automated Power Profile hardware switching (AC0 handling)
-echo "[*] Deploying dynamic hardware power switcher..."
-sudo mkdir -p /usr/local/bin
-
-sudo cat << 'EOF' | sudo tee /usr/local/bin/switch_power_profile.sh > /dev/null
-#!/bin/bash
-sleep 0.5
-AC_STATUS=$(cat /sys/class/power_supply/AC0/online 2>/dev/null)
-
-if [ "$AC_STATUS" = "1" ]; then
-    if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]; then
-        echo "performance" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null
-    fi
-    for epp in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
-        if [ -f "$epp" ]; then echo "performance" > "$epp"; fi
-    done
-    powerprofilesctl set performance 2>/dev/null
-else
-    if [ -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]; then
-        echo "powersave" | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor > /dev/null
-    fi
-    for epp in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
-        if [ -f "$epp" ]; then echo "balance_performance" > "$epp"; fi
-    done
-    powerprofilesctl set balanced 2>/dev/null
+case "${1:-doctor}" in -h|--help|help) usage; exit 0;; esac
+if (( EUID == 0 )); then
+    echo 'Run this script as your normal desktop user, without sudo.' >&2
+    exit 1
 fi
-EOF
-
-sudo chmod +x /usr/local/bin/switch_power_profile.sh
-
-# 6. Deploy the UDEV rules for the power profile
-echo "[*] Creating hardware UDEV rules..."
-sudo cat << 'EOF' | sudo tee /etc/udev/rules.d/99-power-profile.rules > /dev/null
-SUBSYSTEM=="power_supply", ACTION=="change", RUN+="/usr/local/bin/switch_power_profile.sh"
-EOF
-
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-echo "=================================================="
-echo " Setup complete! Ready for your 4070 PC."
-echo "=================================================="
+command -v python3 >/dev/null || { echo 'Install Python 3 first: sudo apt install python3' >&2; exit 1; }
+ACTION=${1:-doctor}
+if (($#)); then shift; fi
+case "$ACTION" in
+    doctor|repair) exec python3 "$ROOT/ltools.py" "$ACTION" "$@" ;;
+    install)
+        (($# == 0)) || { usage; exit 2; }
+        [[ -t 0 && -t 1 ]] || { echo 'Install requires an interactive terminal.' >&2; exit 1; }
+        command -v apt-get >/dev/null || { echo 'Automatic installation supports Zorin/Ubuntu/Debian only. Use doctor or repair on other distributions.' >&2; exit 1; }
+        echo 'Close Steam before continuing. The upstream menu controls which components are installed.'
+        echo 'Option 3 installs only ACCELA/SLSsteam; it does not install the LuaTools plugin.'
+        read -r -p 'Install dependencies and launch the third-party installer? [y/N] ' answer
+        [[ "$answer" =~ ^[Yy]$ ]] || exit 0
+        sudo apt-get update
+        sudo apt-get install -y curl ca-certificates git jq unzip python3-venv python3-pip
+        tmp=$(mktemp -d)
+        trap 'rm -rf -- "$tmp"' EXIT
+        # Pin this entry script. Its own downstream downloads are managed by upstream.
+        revision=b3fa04a28cef848187f4e816fcd8902be29e936e
+        curl --fail --location --show-error --silent --retry 3 --connect-timeout 15 --max-time 180 \
+            "https://raw.githubusercontent.com/Star123451/LuaToolsLinux/$revision/install.sh" -o "$tmp/install.sh"
+        printf '%s  %s\n' '25ac4c760d10bcd597e848fc075bcb5fd8ce26dd9758f63837327f05d4a1d551' "$tmp/install.sh" | sha256sum --check --status
+        bash -n "$tmp/install.sh"
+        bash "$tmp/install.sh"
+        echo 'Upstream installer exited. Checking the actual installed components...'
+        python3 "$ROOT/ltools.py" doctor
+        echo 'To repair the detected launcher mapping, run: ./setup.sh repair'
+        ;;
+    power-enable|power-disable)
+        (($# == 0)) || { usage; exit 2; }
+        exec bash "$ROOT/scripts/power-install.sh" "$ACTION"
+        ;;
+    *) usage >&2; exit 2 ;;
+esac
